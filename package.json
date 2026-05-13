@@ -1,0 +1,30 @@
+{
+  "name": "cortesflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "App local para transformar videos longos em cortes verticais.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sql.js": "^1.12.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@types/sql.js": "^1.4.9",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.4",
+    "eslint": "^9.24.0",
+    "eslint-config-next": "^15.3.0",
+    "typescript": "^5.8.3"
+  }
+}
