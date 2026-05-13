@@ -1,5 +1,5 @@
 import type { ProjectStatus, ProjectSummary } from "@/types/project";
-import { GenerateClipsButton } from "@/features/projects/generate-clips-button";
+import { ClipReviewPanel } from "@/features/projects/clip-review-panel";
 import { ProcessVideoButton } from "@/features/projects/process-video-button";
 import { TranscribeAudioButton } from "@/features/projects/transcribe-audio-button";
 
@@ -73,7 +73,11 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
 
       <section className="future-sections" aria-label="Etapas futuras">
         <TranscriptionPanel project={project} />
-        <ClipSuggestionsPanel project={project} />
+        <ClipReviewPanel
+          canGenerate={Boolean(project.transcription?.segments.length)}
+          projectId={project.id}
+          suggestions={project.clipSuggestions ?? []}
+        />
         <FuturePanel
           eyebrow="Render"
           title="Exportacoes"
@@ -173,62 +177,6 @@ function ProcessingStatus({ status }: { status: ProjectStatus }) {
       {status === "error" ? (
         <p className="processing-error">Revise o erro do projeto e tente novamente.</p>
       ) : null}
-    </section>
-  );
-}
-
-function ClipSuggestionsPanel({ project }: ProjectDetailProps) {
-  const suggestions = project.clipSuggestions ?? [];
-
-  return (
-    <section className="surface future-panel clip-suggestions-panel">
-      <div>
-        <p className="section-kicker">Analise</p>
-        <h2>Cortes sugeridos</h2>
-        <p>
-          Sugestoes heuristicas baseadas em timestamps, densidade de fala e
-          palavras fortes.
-        </p>
-      </div>
-
-      <GenerateClipsButton
-        disabled={!project.transcription?.segments.length}
-        projectId={project.id}
-      />
-
-      {suggestions.length > 0 ? (
-        <div className="clip-list">
-          {suggestions.map((clip) => (
-            <article className="clip-item" key={clip.id}>
-              <div className="clip-item-heading">
-                <strong>{clip.title}</strong>
-                <em>{clip.score.toFixed(1)}</em>
-              </div>
-              <dl className="clip-metadata">
-                <div>
-                  <dt>Inicio</dt>
-                  <dd>{formatTimestamp(clip.start)}</dd>
-                </div>
-                <div>
-                  <dt>Fim</dt>
-                  <dd>{formatTimestamp(clip.end)}</dd>
-                </div>
-                <div>
-                  <dt>Duracao</dt>
-                  <dd>{formatDuration(clip.duration)}</dd>
-                </div>
-              </dl>
-              <p>{clip.text}</p>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <div className="future-placeholder">
-          {project.transcription?.segments.length
-            ? "Transcricao pronta para gerar sugestoes."
-            : "Transcreva o audio antes de gerar cortes."}
-        </div>
-      )}
     </section>
   );
 }

@@ -28,6 +28,13 @@ export class AudioExtractionError extends Error {
   }
 }
 
+export class ClipRenderingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ClipRenderingError";
+  }
+}
+
 type FFprobeOutput = {
   streams?: Array<{
     codec_type?: string;
@@ -53,6 +60,15 @@ export async function getVideoMetadata(filePath: string): Promise<VideoMetadata>
 
 export async function extractAudio(inputPath: string, outputPath: string) {
   return VideoProcessingService.extractAudio(inputPath, outputPath);
+}
+
+export async function renderVerticalClip(input: {
+  duration: number;
+  inputPath: string;
+  outputPath: string;
+  start: number;
+}) {
+  return VideoProcessingService.renderVerticalClip(input);
 }
 
 export class VideoProcessingService {
@@ -152,6 +168,75 @@ export class VideoProcessingService {
       console.error("[VideoProcessingService] Falha ao extrair audio", error);
       throw new AudioExtractionError(
         "Nao foi possivel extrair audio do video com FFmpeg.",
+      );
+    }
+  }
+
+  static async renderVerticalClip({
+    duration,
+    inputPath,
+    outputPath,
+    start,
+  }: {
+    duration: number;
+    inputPath: string;
+    outputPath: string;
+    start: number;
+  }) {
+    await this.validateFFmpegInstalled();
+
+    const filter =
+      "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=30:1[bg];" +
+      "[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];" +
+      "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]";
+
+    try {
+      console.info(
+        `[VideoProcessingService] Renderizando corte vertical: ${inputPath} ${start}-${start + duration} -> ${outputPath}`,
+      );
+
+      await execFileAsync(
+        ffmpegPaths.ffmpeg,
+        [
+          "-y",
+          "-ss",
+          start.toString(),
+          "-t",
+          duration.toString(),
+          "-i",
+          inputPath,
+          "-filter_complex",
+          filter,
+          "-map",
+          "[v]",
+          "-map",
+          "0:a?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "23",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart",
+          outputPath,
+        ],
+        {
+          maxBuffer: 1024 * 1024 * 20,
+          timeout: 1000 * 60 * 10,
+        },
+      );
+
+      console.info(`[VideoProcessingService] Corte renderizado: ${outputPath}`);
+      return outputPath;
+    } catch (error) {
+      console.error("[VideoProcessingService] Falha ao renderizar corte", error);
+      throw new ClipRenderingError(
+        "Nao foi possivel renderizar o corte vertical com FFmpeg.",
       );
     }
   }

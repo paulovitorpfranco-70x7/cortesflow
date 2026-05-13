@@ -55,10 +55,27 @@ function ensureSchema(db: LocalDatabase) {
       duration REAL NOT NULL,
       text TEXT NOT NULL,
       score REAL NOT NULL,
+      review_status TEXT NOT NULL DEFAULT 'suggested',
+      render_status TEXT NOT NULL DEFAULT 'pending',
+      output_path TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY(project_id) REFERENCES projects(id)
     );
   `);
+
+  addColumnIfMissing(
+    db,
+    "review_status",
+    "TEXT NOT NULL DEFAULT 'suggested'",
+    "clip_suggestions",
+  );
+  addColumnIfMissing(
+    db,
+    "render_status",
+    "TEXT NOT NULL DEFAULT 'pending'",
+    "clip_suggestions",
+  );
+  addColumnIfMissing(db, "output_path", "TEXT", "clip_suggestions");
 }
 
 function rowToProject(row: Record<string, unknown>): ProjectSummary {
@@ -298,8 +315,11 @@ export async function replaceClipSuggestions(
       duration,
       text,
       score,
+      review_status,
+      render_status,
+      output_path,
       created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const suggestion of suggestions) {
@@ -312,6 +332,9 @@ export async function replaceClipSuggestions(
       suggestion.duration,
       suggestion.text,
       suggestion.score,
+      suggestion.reviewStatus,
+      suggestion.renderStatus,
+      suggestion.outputPath,
       suggestion.createdAt,
     );
   }
@@ -334,9 +357,126 @@ export async function replaceClipSuggestions(
   db.close();
 }
 
-function addColumnIfMissing(db: LocalDatabase, column: string, definition: string) {
+export async function updateClipSuggestionReview(
+  projectId: string,
+  clipId: string,
+  input: {
+    end?: number;
+    reviewStatus?: string;
+    start?: number;
+  },
+) {
+  const db = await openDatabase();
+  ensureSchema(db);
+
+  const current = db
+    .prepare(
+      `
+        SELECT start_time, end_time
+        FROM clip_suggestions
+        WHERE id = ? AND project_id = ?
+        LIMIT 1;
+      `,
+    )
+    .all(clipId, projectId)[0];
+
+  if (!current) {
+    db.close();
+    return false;
+  }
+
+  const start = input.start ?? Number(current.start_time);
+  const end = input.end ?? Number(current.end_time);
+  const duration = Number(Math.max(0, end - start).toFixed(3));
+
+  db.prepare(
+    `
+      UPDATE clip_suggestions
+      SET
+        start_time = ?,
+        end_time = ?,
+        duration = ?,
+        review_status = COALESCE(?, review_status)
+      WHERE id = ? AND project_id = ?;
+    `,
+  ).run(start, end, duration, input.reviewStatus ?? null, clipId, projectId);
+
+  db.close();
+  return true;
+}
+
+export async function selectApprovedClipSuggestions(projectId: string) {
+  const db = await openDatabase();
+  ensureSchema(db);
+  const clips = selectClipSuggestionsForProject(db, projectId).filter(
+    (clip) => clip.reviewStatus === "approved",
+  );
+  db.close();
+
+  return clips;
+}
+
+export async function selectClipSuggestionById(projectId: string, clipId: string) {
+  const db = await openDatabase();
+  ensureSchema(db);
+  const [clip] = selectClipSuggestionsForProject(db, projectId).filter(
+    (suggestion) => suggestion.id === clipId,
+  );
+  db.close();
+
+  return clip ?? null;
+}
+
+export async function updateClipSuggestionRenderStatus(
+  projectId: string,
+  clipId: string,
+  input: {
+    outputPath?: string | null;
+    renderStatus: string;
+  },
+) {
+  const db = await openDatabase();
+  ensureSchema(db);
+
+  db.prepare(
+    `
+      UPDATE clip_suggestions
+      SET
+        render_status = ?,
+        output_path = COALESCE(?, output_path)
+      WHERE id = ? AND project_id = ?;
+    `,
+  ).run(input.renderStatus, input.outputPath ?? null, clipId, projectId);
+
+  db.close();
+}
+
+export async function markProjectRendered(projectId: string) {
+  const db = await openDatabase();
+  ensureSchema(db);
+
+  db.prepare(
+    `
+      UPDATE projects
+      SET
+        status = ?,
+        description = ?,
+        error_message = NULL
+      WHERE id = ?;
+    `,
+  ).run("rendered", "Cortes aprovados renderizados.", projectId);
+
+  db.close();
+}
+
+function addColumnIfMissing(
+  db: LocalDatabase,
+  column: string,
+  definition: string,
+  table = "projects",
+) {
   try {
-    db.exec(`ALTER TABLE projects ADD COLUMN ${column} ${definition};`);
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
   } catch {
     // SQLite does not support IF NOT EXISTS for ADD COLUMN in all versions.
   }
@@ -415,6 +555,9 @@ function selectClipSuggestionsForProject(
       duration,
       text,
       score,
+      review_status,
+      render_status,
+      output_path,
       created_at
     FROM clip_suggestions
     WHERE project_id = ?
@@ -430,6 +573,31 @@ function selectClipSuggestionsForProject(
     duration: Number(row.duration),
     text: String(row.text),
     score: Number(row.score),
+    reviewStatus: normalizeClipReviewStatus(row.review_status),
+    renderStatus: normalizeClipRenderStatus(row.render_status),
+    outputPath: nullableString(row.output_path),
     createdAt: String(row.created_at),
   }));
+}
+
+function normalizeClipReviewStatus(value: unknown) {
+  const status = nullableString(value);
+  if (
+    status === "selected" ||
+    status === "approved" ||
+    status === "discarded"
+  ) {
+    return status;
+  }
+
+  return "suggested";
+}
+
+function normalizeClipRenderStatus(value: unknown) {
+  const status = nullableString(value);
+  if (status === "rendering" || status === "rendered" || status === "error") {
+    return status;
+  }
+
+  return "pending";
 }

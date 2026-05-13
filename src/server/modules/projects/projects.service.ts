@@ -8,9 +8,13 @@ import {
 } from "@/server/modules/clip-generation/clip-generation.service";
 import {
   insertProject,
+  markProjectRendered,
   replaceClipSuggestions,
+  selectApprovedClipSuggestions,
   selectProjectById,
   selectRecentProjects,
+  updateClipSuggestionReview,
+  updateClipSuggestionRenderStatus,
   updateProjectMetadata,
   updateProjectProcessingError,
   updateProjectTranscription,
@@ -23,12 +27,15 @@ import {
 } from "@/server/modules/transcription/transcription.service";
 import {
   AudioExtractionError,
+  ClipRenderingError,
   extractAudio,
   FFmpegNotInstalledError,
   getVideoMetadata,
+  renderVerticalClip,
   VideoMetadataError,
 } from "@/server/modules/video-processing/video-processing.service";
 import type { ProjectSummary } from "@/types/project";
+import type { ClipReviewStatus } from "@/types/project";
 
 const acceptedExtensions = new Set([".mp4", ".mov", ".mkv", ".webm"]);
 const acceptedMimeTypes = new Set([
@@ -208,6 +215,117 @@ export async function generateProjectClipSuggestions(projectId: string) {
   }
 }
 
+export async function updateProjectClipSuggestion(
+  projectId: string,
+  clipId: string,
+  input: {
+    end?: number;
+    reviewStatus?: ClipReviewStatus;
+    start?: number;
+  },
+) {
+  const project = await getProjectById(projectId);
+
+  if (!project) {
+    throw new ProjectNotFoundError();
+  }
+
+  validateClipReviewInput(input);
+
+  const updated = await updateClipSuggestionReview(projectId, clipId, input);
+  if (!updated) {
+    throw new ClipSuggestionNotFoundError();
+  }
+
+  return getProjectById(projectId);
+}
+
+export async function renderApprovedProjectClips(projectId: string) {
+  const project = await getProjectById(projectId);
+
+  if (!project) {
+    throw new ProjectNotFoundError();
+  }
+
+  if (!project.filePath) {
+    throw new ProjectProcessingError("Arquivo original do projeto nao encontrado.");
+  }
+
+  const approvedClips = await selectApprovedClipSuggestions(projectId);
+
+  if (approvedClips.length === 0) {
+    throw new ProjectProcessingError(
+      "Nenhum corte aprovado encontrado para renderizar.",
+    );
+  }
+
+  try {
+    console.info(
+      `[ProjectsService] Renderizando cortes aprovados: ${project.id} total=${approvedClips.length}`,
+    );
+
+    for (const clip of approvedClips) {
+      const outputPath = path.join(
+        storagePaths.outputs,
+        project.id,
+        `${clip.id}.mp4`,
+      );
+
+      await mkdir(path.dirname(outputPath), { recursive: true });
+      await updateClipSuggestionRenderStatus(project.id, clip.id, {
+        renderStatus: "rendering",
+      });
+
+      try {
+        await renderVerticalClip({
+          duration: clip.duration,
+          inputPath: project.filePath,
+          outputPath,
+          start: clip.start,
+        });
+        await updateClipSuggestionRenderStatus(project.id, clip.id, {
+          outputPath,
+          renderStatus: "rendered",
+        });
+      } catch (error) {
+        await updateClipSuggestionRenderStatus(project.id, clip.id, {
+          renderStatus: "error",
+        });
+        throw error;
+      }
+    }
+
+    await markProjectRendered(project.id);
+    console.info(`[ProjectsService] Renderizacao concluida: ${project.id}`);
+
+    return getProjectById(project.id);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Nao foi possivel renderizar os cortes aprovados.";
+
+    await updateProjectProcessingError(project.id, message);
+    console.error(`[ProjectsService] Falha na renderizacao: ${project.id}`, error);
+
+    if (
+      error instanceof FFmpegNotInstalledError ||
+      error instanceof ClipRenderingError
+    ) {
+      throw error;
+    }
+
+    throw new ProjectProcessingError(message);
+  }
+}
+
+export class ClipSuggestionNotFoundError extends Error {
+  constructor() {
+    super("Corte sugerido nao encontrado.");
+    this.name = "ClipSuggestionNotFoundError";
+  }
+}
+
 export class ProjectNotFoundError extends Error {
   constructor() {
     super("Projeto nao encontrado.");
@@ -219,6 +337,40 @@ export class ProjectProcessingError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ProjectProcessingError";
+  }
+}
+
+function validateClipReviewInput(input: {
+  end?: number;
+  reviewStatus?: ClipReviewStatus;
+  start?: number;
+}) {
+  if (
+    input.reviewStatus &&
+    !["suggested", "selected", "approved", "discarded"].includes(
+      input.reviewStatus,
+    )
+  ) {
+    throw new ProjectProcessingError("Status de revisao invalido.");
+  }
+
+  if (
+    input.start !== undefined &&
+    (!Number.isFinite(input.start) || input.start < 0)
+  ) {
+    throw new ProjectProcessingError("Inicio do corte invalido.");
+  }
+
+  if (input.end !== undefined && (!Number.isFinite(input.end) || input.end <= 0)) {
+    throw new ProjectProcessingError("Fim do corte invalido.");
+  }
+
+  if (
+    input.start !== undefined &&
+    input.end !== undefined &&
+    input.end <= input.start
+  ) {
+    throw new ProjectProcessingError("O fim precisa ser maior que o inicio.");
   }
 }
 

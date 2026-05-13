@@ -726,7 +726,15 @@ p {
   white-space: nowrap;
 }
 
-.clip-item-heading em {
+.clip-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.clip-badges em,
+.clip-badges span {
   border: 1px solid rgb(73 210 165 / 50%);
   border-radius: 999px;
   color: var(--accent-strong);
@@ -734,6 +742,23 @@ p {
   font-style: normal;
   font-weight: 800;
   padding: 5px 8px;
+}
+
+.clip-badges span {
+  border-color: var(--line-strong);
+  color: var(--muted-strong);
+}
+
+.clip-item-selected {
+  border-color: rgb(73 210 165 / 45%);
+}
+
+.clip-item-approved {
+  border-color: var(--accent);
+}
+
+.clip-item-discarded {
+  opacity: 0.58;
 }
 
 .clip-metadata {
@@ -768,6 +793,66 @@ p {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
+}
+
+.clip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.clip-actions button,
+.clip-actions a,
+.clip-edit-grid button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--foreground);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.clip-actions button:disabled,
+.clip-edit-grid button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.clip-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.clip-edit-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.clip-edit-grid input {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #11151d;
+  color: var(--foreground);
+  padding: 0 10px;
+}
+
+.clip-error {
+  color: #ffb6b6;
+  line-height: 1.4;
 }
 
 @media (max-width: 900px) {
@@ -809,6 +894,7 @@ p {
 
   .disabled-input-row,
   .selected-file,
+  .clip-edit-grid,
   .project-item {
     grid-template-columns: 1fr;
   }

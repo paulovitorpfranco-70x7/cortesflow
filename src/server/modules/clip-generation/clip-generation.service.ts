@@ -34,7 +34,10 @@ type GenerateClipSuggestionsInput = {
   segments: TranscriptionSegment[];
 };
 
-type CandidateClip = Omit<ClipSuggestion, "createdAt" | "id" | "projectId">;
+type CandidateClip = Omit<
+  ClipSuggestion,
+  "createdAt" | "id" | "outputPath" | "projectId" | "renderStatus" | "reviewStatus"
+>;
 
 export class ClipGenerationError extends Error {
   constructor(message: string) {
@@ -73,6 +76,9 @@ export class ClipGenerationService {
       id: crypto.randomUUID(),
       projectId,
       title: candidate.title || `Corte ${index + 1}`,
+      reviewStatus: "suggested",
+      renderStatus: "pending",
+      outputPath: null,
       createdAt,
     }));
   }

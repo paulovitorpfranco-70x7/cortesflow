@@ -52,5 +52,11 @@ export type ClipSuggestion = {
   duration: number;
   text: string;
   score: number;
+  reviewStatus: ClipReviewStatus;
+  renderStatus: ClipRenderStatus;
+  outputPath: string | null;
   createdAt: string;
 };
+
+export type ClipReviewStatus = "suggested" | "selected" | "approved" | "discarded";
+export type ClipRenderStatus = "pending" | "rendering" | "rendered" | "error";
