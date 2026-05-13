@@ -34,7 +34,7 @@ import {
   renderVerticalClip,
   VideoMetadataError,
 } from "@/server/modules/video-processing/video-processing.service";
-import type { ProjectSummary } from "@/types/project";
+import type { ProjectSummary, TranscriptionSegment } from "@/types/project";
 import type { ClipReviewStatus } from "@/types/project";
 
 const acceptedExtensions = new Set([".mp4", ".mov", ".mkv", ".webm"]);
@@ -240,7 +240,10 @@ export async function updateProjectClipSuggestion(
   return getProjectById(projectId);
 }
 
-export async function renderApprovedProjectClips(projectId: string) {
+export async function renderApprovedProjectClips(
+  projectId: string,
+  options: { includeCaptions?: boolean } = {},
+) {
   const project = await getProjectById(projectId);
 
   if (!project) {
@@ -265,11 +268,17 @@ export async function renderApprovedProjectClips(projectId: string) {
     );
 
     for (const clip of approvedClips) {
+      const outputFilename = options.includeCaptions
+        ? `${clip.id}-captioned.mp4`
+        : `${clip.id}.mp4`;
       const outputPath = path.join(
         storagePaths.outputs,
         project.id,
-        `${clip.id}.mp4`,
+        outputFilename,
       );
+      const captionsPath = options.includeCaptions
+        ? path.join(storagePaths.outputs, project.id, `${clip.id}.srt`)
+        : undefined;
 
       await mkdir(path.dirname(outputPath), { recursive: true });
       await updateClipSuggestionRenderStatus(project.id, clip.id, {
@@ -277,7 +286,16 @@ export async function renderApprovedProjectClips(projectId: string) {
       });
 
       try {
+        if (captionsPath) {
+          const srtContent = buildClipSrt({
+            clip,
+            segments: project.transcription?.segments ?? [],
+          });
+          await writeFile(captionsPath, srtContent, "utf8");
+        }
+
         await renderVerticalClip({
+          captionsPath,
           duration: clip.duration,
           inputPath: project.filePath,
           outputPath,
@@ -462,4 +480,68 @@ function formatFileSize(sizeInBytes: number) {
   }
 
   return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function buildClipSrt({
+  clip,
+  segments,
+}: {
+  clip: {
+    duration: number;
+    end: number;
+    start: number;
+    text: string;
+  };
+  segments: TranscriptionSegment[];
+}) {
+  const overlappingSegments = segments
+    .filter((segment) => segment.end > clip.start && segment.start < clip.end)
+    .map((segment) => ({
+      end: Math.min(segment.end, clip.end) - clip.start,
+      start: Math.max(segment.start, clip.start) - clip.start,
+      text: cleanSubtitleText(segment.text),
+    }))
+    .filter((segment) => segment.text && segment.end > segment.start);
+
+  const subtitleSegments =
+    overlappingSegments.length > 0
+      ? overlappingSegments
+      : [
+          {
+            end: clip.duration,
+            start: 0,
+            text: cleanSubtitleText(clip.text),
+          },
+        ];
+
+  return subtitleSegments
+    .map((segment, index) => {
+      return [
+        String(index + 1),
+        `${formatSrtTimestamp(segment.start)} --> ${formatSrtTimestamp(segment.end)}`,
+        segment.text,
+      ].join("\n");
+    })
+    .join("\n\n")
+    .concat("\n");
+}
+
+function cleanSubtitleText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function formatSrtTimestamp(totalSeconds: number) {
+  const totalMilliseconds = Math.max(0, Math.round(totalSeconds * 1000));
+  const hours = Math.floor(totalMilliseconds / 3_600_000);
+  const minutes = Math.floor((totalMilliseconds % 3_600_000) / 60_000);
+  const seconds = Math.floor((totalMilliseconds % 60_000) / 1000);
+  const milliseconds = totalMilliseconds % 1000;
+
+  return `${padTime(hours)}:${padTime(minutes)}:${padTime(seconds)},${milliseconds
+    .toString()
+    .padStart(3, "0")}`;
+}
+
+function padTime(value: number) {
+  return value.toString().padStart(2, "0");
 }

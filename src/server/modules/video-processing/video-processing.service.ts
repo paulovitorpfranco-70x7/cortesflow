@@ -63,6 +63,7 @@ export async function extractAudio(inputPath: string, outputPath: string) {
 }
 
 export async function renderVerticalClip(input: {
+  captionsPath?: string;
   duration: number;
   inputPath: string;
   outputPath: string;
@@ -173,11 +174,13 @@ export class VideoProcessingService {
   }
 
   static async renderVerticalClip({
+    captionsPath,
     duration,
     inputPath,
     outputPath,
     start,
   }: {
+    captionsPath?: string;
     duration: number;
     inputPath: string;
     outputPath: string;
@@ -185,14 +188,17 @@ export class VideoProcessingService {
   }) {
     await this.validateFFmpegInstalled();
 
-    const filter =
+    const baseFilter =
       "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=30:1[bg];" +
       "[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];" +
-      "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]";
+      "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[base]";
+    const filter = captionsPath
+      ? `${baseFilter};[base]subtitles='${escapeSubtitlePath(captionsPath)}':force_style='${subtitleStyle}',format=yuv420p[v]`
+      : `${baseFilter};[base]format=yuv420p[v]`;
 
     try {
       console.info(
-        `[VideoProcessingService] Renderizando corte vertical: ${inputPath} ${start}-${start + duration} -> ${outputPath}`,
+        `[VideoProcessingService] Renderizando corte vertical: ${inputPath} ${start}-${start + duration} -> ${outputPath} captions=${captionsPath ? "on" : "off"}`,
       );
 
       await execFileAsync(
@@ -266,4 +272,23 @@ function parseFrameRate(value: string | undefined) {
   }
 
   return Number((numerator / denominator).toFixed(3));
+}
+
+const subtitleStyle = [
+  "FontName=Arial",
+  "Fontsize=64",
+  "PrimaryColour=&H00FFFFFF",
+  "OutlineColour=&H00000000",
+  "BorderStyle=1",
+  "Outline=4",
+  "Shadow=0",
+  "Alignment=2",
+  "MarginV=220",
+].join(",");
+
+function escapeSubtitlePath(filePath: string) {
+  return filePath
+    .replace(/\\/g, "/")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'");
 }

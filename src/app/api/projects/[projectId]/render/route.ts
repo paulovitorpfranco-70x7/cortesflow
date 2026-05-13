@@ -13,11 +13,13 @@ type RenderProjectRouteProps = {
   }>;
 };
 
-export async function POST(_request: Request, { params }: RenderProjectRouteProps) {
+export async function POST(request: Request, { params }: RenderProjectRouteProps) {
   const { projectId } = await params;
 
   try {
-    const project = await renderApprovedProjectClips(projectId);
+    const project = await renderApprovedProjectClips(projectId, {
+      includeCaptions: await readIncludeCaptions(request),
+    });
     return NextResponse.json({ project });
   } catch (error) {
     if (error instanceof ProjectNotFoundError) {
@@ -34,5 +36,14 @@ export async function POST(_request: Request, { params }: RenderProjectRouteProp
         : "Nao foi possivel renderizar os cortes.";
 
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+async function readIncludeCaptions(request: Request) {
+  try {
+    const payload = (await request.json()) as { includeCaptions?: unknown };
+    return payload.includeCaptions === true;
+  } catch {
+    return false;
   }
 }

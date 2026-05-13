@@ -501,6 +501,21 @@ p {
   line-height: 1.45;
 }
 
+.caption-render-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-strong);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.caption-render-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
 .status-pill {
   border: 1px solid var(--line);
   border-radius: 999px;

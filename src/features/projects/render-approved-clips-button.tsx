@@ -14,6 +14,7 @@ export function RenderApprovedClipsButton({
 }: RenderApprovedClipsButtonProps) {
   const router = useRouter();
   const [isRendering, setIsRendering] = useState(false);
+  const [includeCaptions, setIncludeCaptions] = useState(true);
   const [error, setError] = useState("");
 
   async function handleRender() {
@@ -22,6 +23,10 @@ export function RenderApprovedClipsButton({
 
     try {
       const response = await fetch(`/api/projects/${projectId}/render`, {
+        body: JSON.stringify({ includeCaptions }),
+        headers: {
+          "Content-Type": "application/json",
+        },
         method: "POST",
       });
       const payload = (await response.json()) as { error?: string };
@@ -41,6 +46,15 @@ export function RenderApprovedClipsButton({
 
   return (
     <div className="process-action-stack">
+      <label className="caption-render-option">
+        <input
+          checked={includeCaptions}
+          disabled={disabled || isRendering}
+          onChange={(event) => setIncludeCaptions(event.target.checked)}
+          type="checkbox"
+        />
+        <span>Renderizar com legenda</span>
+      </label>
       <button
         className="secondary-action"
         disabled={disabled || isRendering}
