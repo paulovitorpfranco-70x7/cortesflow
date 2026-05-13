@@ -1,5 +1,7 @@
 import type { ProjectStatus, ProjectSummary } from "@/types/project";
+import { GenerateClipsButton } from "@/features/projects/generate-clips-button";
 import { ProcessVideoButton } from "@/features/projects/process-video-button";
+import { TranscribeAudioButton } from "@/features/projects/transcribe-audio-button";
 
 type ProjectDetailProps = {
   project: ProjectSummary;
@@ -70,16 +72,8 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
       </section>
 
       <section className="future-sections" aria-label="Etapas futuras">
-        <FuturePanel
-          eyebrow="Whisper"
-          title="Transcricao"
-          description="Aqui serao exibidos idioma, segmentos com timestamp, texto completo e arquivos SRT/VTT."
-        />
-        <FuturePanel
-          eyebrow="Analise"
-          title="Cortes sugeridos"
-          description="Aqui ficarao os candidatos de cortes, score, motivo da sugestao e controles de revisao."
-        />
+        <TranscriptionPanel project={project} />
+        <ClipSuggestionsPanel project={project} />
         <FuturePanel
           eyebrow="Render"
           title="Exportacoes"
@@ -183,6 +177,119 @@ function ProcessingStatus({ status }: { status: ProjectStatus }) {
   );
 }
 
+function ClipSuggestionsPanel({ project }: ProjectDetailProps) {
+  const suggestions = project.clipSuggestions ?? [];
+
+  return (
+    <section className="surface future-panel clip-suggestions-panel">
+      <div>
+        <p className="section-kicker">Analise</p>
+        <h2>Cortes sugeridos</h2>
+        <p>
+          Sugestoes heuristicas baseadas em timestamps, densidade de fala e
+          palavras fortes.
+        </p>
+      </div>
+
+      <GenerateClipsButton
+        disabled={!project.transcription?.segments.length}
+        projectId={project.id}
+      />
+
+      {suggestions.length > 0 ? (
+        <div className="clip-list">
+          {suggestions.map((clip) => (
+            <article className="clip-item" key={clip.id}>
+              <div className="clip-item-heading">
+                <strong>{clip.title}</strong>
+                <em>{clip.score.toFixed(1)}</em>
+              </div>
+              <dl className="clip-metadata">
+                <div>
+                  <dt>Inicio</dt>
+                  <dd>{formatTimestamp(clip.start)}</dd>
+                </div>
+                <div>
+                  <dt>Fim</dt>
+                  <dd>{formatTimestamp(clip.end)}</dd>
+                </div>
+                <div>
+                  <dt>Duracao</dt>
+                  <dd>{formatDuration(clip.duration)}</dd>
+                </div>
+              </dl>
+              <p>{clip.text}</p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="future-placeholder">
+          {project.transcription?.segments.length
+            ? "Transcricao pronta para gerar sugestoes."
+            : "Transcreva o audio antes de gerar cortes."}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TranscriptionPanel({ project }: ProjectDetailProps) {
+  return (
+    <section className="surface future-panel transcription-panel">
+      <div>
+        <p className="section-kicker">Whisper</p>
+        <h2>Transcricao</h2>
+        <p>
+          Transcricao segmentada com timestamps para alimentar a futura geracao
+          de cortes.
+        </p>
+      </div>
+
+      <TranscribeAudioButton
+        disabled={!project.audioPath}
+        projectId={project.id}
+      />
+
+      {project.transcription ? (
+        <div className="transcript-content">
+          <dl className="metadata-list">
+            <div>
+              <dt>JSON</dt>
+              <dd>{project.transcription.jsonPath ?? "Nao gerado"}</dd>
+            </div>
+            <div>
+              <dt>SRT</dt>
+              <dd>{project.transcription.srtPath ?? "Nao gerado"}</dd>
+            </div>
+          </dl>
+
+          <div className="transcript-segments">
+            {project.transcription.segments.length > 0 ? (
+              project.transcription.segments.map((segment) => (
+                <article key={`${segment.start}-${segment.end}-${segment.text}`}>
+                  <time>
+                    {formatTimestamp(segment.start)} -{" "}
+                    {formatTimestamp(segment.end)}
+                  </time>
+                  <p>{segment.text}</p>
+                </article>
+              ))
+            ) : (
+              <p>{project.transcription.text}</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="future-placeholder">
+          {project.audioPath
+            ? "Audio pronto para transcricao local."
+            : "Processe o video para extrair audio antes de transcrever."}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function FuturePanel({
   eyebrow,
   title,
@@ -246,4 +353,14 @@ function formatNullableNumber(value: number | null) {
   }
 
   return value.toString();
+}
+
+function formatTimestamp(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  const milliseconds = Math.round((totalSeconds % 1) * 1000);
+
+  return `${minutes.toString().padStart(2, "0")}:${seconds
+    .toString()
+    .padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
 }

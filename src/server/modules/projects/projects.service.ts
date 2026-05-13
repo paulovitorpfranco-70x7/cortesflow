@@ -3,12 +3,24 @@ import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { storagePaths } from "@/lib/storage/paths";
 import {
+  ClipGenerationError,
+  generateClipSuggestions,
+} from "@/server/modules/clip-generation/clip-generation.service";
+import {
   insertProject,
+  replaceClipSuggestions,
   selectProjectById,
   selectRecentProjects,
   updateProjectMetadata,
   updateProjectProcessingError,
+  updateProjectTranscription,
 } from "@/server/modules/projects/projects.repository";
+import {
+  transcribeAudio,
+  TranscriptionError,
+  WhisperConfigurationError,
+  WhisperNotInstalledError,
+} from "@/server/modules/transcription/transcription.service";
 import {
   AudioExtractionError,
   extractAudio,
@@ -92,6 +104,103 @@ export async function processProjectVideo(projectId: string) {
       error instanceof VideoMetadataError ||
       error instanceof AudioExtractionError
     ) {
+      throw error;
+    }
+
+    throw new ProjectProcessingError(message);
+  }
+}
+
+export async function transcribeProjectAudio(projectId: string) {
+  const project = await getProjectById(projectId);
+
+  if (!project) {
+    throw new ProjectNotFoundError();
+  }
+
+  if (!project.audioPath) {
+    throw new ProjectProcessingError(
+      "Audio extraido nao encontrado. Processe o video antes de transcrever.",
+    );
+  }
+
+  try {
+    const transcriptDir = path.join(
+      storagePaths.projects,
+      project.id,
+      "assets",
+      "transcription",
+    );
+
+    console.info(
+      `[ProjectsService] Iniciando transcricao: ${project.id} audio=${project.audioPath}`,
+    );
+
+    const transcription = await transcribeAudio(project.audioPath, transcriptDir);
+    await updateProjectTranscription(project.id, transcription);
+
+    console.info(`[ProjectsService] Transcricao concluida: ${project.id}`);
+    return getProjectById(project.id);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Nao foi possivel transcrever o audio.";
+
+    await updateProjectProcessingError(project.id, message);
+    console.error(`[ProjectsService] Falha na transcricao: ${project.id}`, error);
+
+    if (
+      error instanceof WhisperNotInstalledError ||
+      error instanceof WhisperConfigurationError ||
+      error instanceof TranscriptionError
+    ) {
+      throw error;
+    }
+
+    throw new ProjectProcessingError(message);
+  }
+}
+
+export async function generateProjectClipSuggestions(projectId: string) {
+  const project = await getProjectById(projectId);
+
+  if (!project) {
+    throw new ProjectNotFoundError();
+  }
+
+  if (!project.transcription?.segments.length) {
+    throw new ProjectProcessingError(
+      "Transcricao segmentada nao encontrada. Transcreva o audio antes de gerar cortes.",
+    );
+  }
+
+  try {
+    console.info(`[ProjectsService] Gerando cortes sugeridos: ${project.id}`);
+    const suggestions = generateClipSuggestions({
+      projectId: project.id,
+      segments: project.transcription.segments,
+    });
+
+    await replaceClipSuggestions(project.id, suggestions);
+    console.info(
+      `[ProjectsService] Cortes sugeridos gerados: ${project.id} total=${suggestions.length}`,
+    );
+
+    return getProjectById(project.id);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Nao foi possivel gerar cortes sugeridos.";
+
+    await updateProjectProcessingError(project.id, message);
+    console.error(
+      `[ProjectsService] Falha ao gerar cortes sugeridos: ${project.id}`,
+      error,
+    );
+
+    if (error instanceof ClipGenerationError) {
       throw error;
     }
 

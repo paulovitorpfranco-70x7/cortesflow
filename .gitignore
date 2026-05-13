@@ -20,3 +20,8 @@ storage/projects/*
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+models/whisper/*
+!models/whisper/.gitkeep
+tools/whisper.cpp/*
+!tools/whisper.cpp/.gitkeep
