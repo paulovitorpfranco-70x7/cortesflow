@@ -4,8 +4,18 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { storagePaths } from "@/lib/storage/paths";
 import {
   insertProject,
+  selectProjectById,
   selectRecentProjects,
+  updateProjectMetadata,
+  updateProjectProcessingError,
 } from "@/server/modules/projects/projects.repository";
+import {
+  AudioExtractionError,
+  extractAudio,
+  FFmpegNotInstalledError,
+  getVideoMetadata,
+  VideoMetadataError,
+} from "@/server/modules/video-processing/video-processing.service";
 import type { ProjectSummary } from "@/types/project";
 
 const acceptedExtensions = new Set([".mp4", ".mov", ".mkv", ".webm"]);
@@ -31,6 +41,76 @@ export async function listProjects(): Promise<ProjectSummary[]> {
 
 export async function recentProjects(): Promise<ProjectSummary[]> {
   return listProjects();
+}
+
+export async function getProjectById(id: string) {
+  return selectProjectById(id);
+}
+
+export async function processProjectVideo(projectId: string) {
+  const project = await getProjectById(projectId);
+
+  if (!project) {
+    throw new ProjectNotFoundError();
+  }
+
+  if (!project.filePath) {
+    throw new ProjectProcessingError("Arquivo original do projeto nao encontrado.");
+  }
+
+  try {
+    console.info(`[ProjectsService] Iniciando processamento: ${project.id}`);
+    console.info(`[ProjectsService] Extraindo metadados: ${project.filePath}`);
+    const metadata = await getVideoMetadata(project.filePath);
+    const audioPath = path.join(
+      storagePaths.projects,
+      project.id,
+      "assets",
+      "audio.wav",
+    );
+
+    await mkdir(path.dirname(audioPath), { recursive: true });
+    await extractAudio(project.filePath, audioPath);
+    await updateProjectMetadata(project.id, metadata, audioPath);
+
+    console.info(
+      `[ProjectsService] Processamento concluido: ${project.id} audio=${audioPath}`,
+    );
+
+    return getProjectById(project.id);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Nao foi possivel processar o video.";
+
+    await updateProjectProcessingError(project.id, message);
+    console.error(`[ProjectsService] Falha no processamento: ${project.id}`, error);
+
+    if (
+      error instanceof FFmpegNotInstalledError ||
+      error instanceof VideoMetadataError ||
+      error instanceof AudioExtractionError
+    ) {
+      throw error;
+    }
+
+    throw new ProjectProcessingError(message);
+  }
+}
+
+export class ProjectNotFoundError extends Error {
+  constructor() {
+    super("Projeto nao encontrado.");
+    this.name = "ProjectNotFoundError";
+  }
+}
+
+export class ProjectProcessingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProjectProcessingError";
+  }
 }
 
 export async function createProjectFromUpload(file: File) {

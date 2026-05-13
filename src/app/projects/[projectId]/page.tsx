@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ProjectDetail } from "@/features/projects/project-detail";
+import { getProjectById } from "@/server/modules/projects/projects.service";
 
 type ProjectPageProps = {
   params: Promise<{
@@ -8,20 +11,18 @@ type ProjectPageProps = {
 
 export default async function ProjectPage({ params }: ProjectPageProps) {
   const { projectId } = await params;
+  const project = await getProjectById(projectId);
+
+  if (!project) {
+    notFound();
+  }
 
   return (
-    <main className="app-shell narrow-shell">
+    <main className="app-shell">
       <Link className="text-link" href="/">
         Voltar
       </Link>
-      <section className="surface placeholder-page">
-        <p className="section-kicker">Workspace</p>
-        <h1>Projeto {projectId}</h1>
-        <p>
-          Esta tela sera usada para revisar upload, transcricao, sugestoes de
-          cortes e exportacoes.
-        </p>
-      </section>
+      <ProjectDetail project={project} />
     </main>
   );
 }

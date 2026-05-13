@@ -8,8 +8,10 @@ type RecentProjectsProps = {
 const statusLabels: Record<ProjectSummary["status"], string> = {
   uploaded: "Enviado",
   processing: "Processando",
-  ready: "Pronto",
-  failed: "Erro",
+  transcribed: "Transcrito",
+  clips_generated: "Cortes",
+  rendered: "Renderizado",
+  error: "Erro",
 };
 
 export function RecentProjects({ projects }: RecentProjectsProps) {
