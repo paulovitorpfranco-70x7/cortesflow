@@ -7,13 +7,13 @@ App local para receber videos longos e preparar cortes curtos verticais para You
 - Next.js com App Router
 - TypeScript
 - API routes do Next.js para o backend do MVP
-- SQLite local
+- SQLite local via `node:sqlite`
 - FFmpeg preparado para processamento futuro
 - Estrutura preparada para integracao futura com Whisper
 
 ## Requisitos locais
 
-- Node.js 20+
+- Node.js 24+
 - npm
 - FFmpeg e ffprobe disponiveis no PATH
 

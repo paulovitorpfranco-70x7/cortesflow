@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CortesFlow",
+  title: "ClipForge AI",
   description: "App local para gerar cortes verticais a partir de videos longos.",
 };
 
